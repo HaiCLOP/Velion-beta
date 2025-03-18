@@ -16,7 +16,6 @@ import os
 import winreg
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
-
 import json
 import os
 import pyperclip
@@ -291,6 +290,7 @@ def open_application(statement):
         speak(f"Sorry, I couldn't find an application named {statement}.")
         print(e)
         return False
+
 
 def convert_currency(statement):
     if "convert" in statement:
