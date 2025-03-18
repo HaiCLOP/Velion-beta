@@ -1,24 +1,31 @@
 import speech_recognition as sr
 import pyttsx3
 import re
-import datetime
-import cv2
-import webbrowser
-import time
 import screen_brightness_control as sbc
+import datetime
+import webbrowser
 from ctypes import cast, POINTER
 from comtypes import CLSCTX_ALL
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+import time
+import wmi
 import requests
 import subprocess
-from googletrans import Translator
+from deep_translator import GoogleTranslator
 import os
 import winreg
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
+
+import json
+import os
+import pyperclip
+from PIL import ImageTk, Image
 from colorama import Fore, Back, Style
 import random
 import json
+
+
 
 print("Loading your AI personal assistant - Velion")
 
@@ -27,7 +34,6 @@ engine = pyttsx3.init('sapi5')
 voices = engine.getProperty('voices')
 engine.setProperty('voice', voices[1].id)
 
-# Function to make the assistant speak
 def speak(text, echo=True, wait=True, speaker="Velion"):
     if echo: print(Style.BRIGHT+speaker+Style.RESET_ALL+":", text)
     engine.say(text)
@@ -36,20 +42,17 @@ def speak(text, echo=True, wait=True, speaker="Velion"):
     except Exception:
         pass
 
-# Load data from JSON files
 def load_json(file_name):
     base_dir = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(base_dir, file_name), 'r') as file:
         return json.load(file)
 
-# Load website mappings, jokes, riddles, and quotes
 websites = load_json('websites.json')
 jokes = load_json('jokes.json')
 riddles = load_json('riddles.json')
 quotes = load_json('quotes.json')
+trivia_questions = load_json('trivia_questions.json')
 
-
-# Greeting function based on time of day
 def wishMe():
     hour = datetime.datetime.now().hour
     print(Style.BRIGHT+Back.LIGHTGREEN_EX+Fore.GREEN,end=" ")
@@ -64,13 +67,10 @@ def wishMe():
         speak("Hello, Good Evening", echo=False)
     print()
 
-
-
-# Function to recognize user voice input
-def takeCommand(parseErrorPlayback = True):
+def takeCommand(parseErrorPlayback=True):
     r = sr.Recognizer()
     with sr.Microphone() as source:
-        r.adjust_for_ambient_noise(source, duration=1)  # Calibrate for ambient noise
+        r.adjust_for_ambient_noise(source, duration=1)
         print(f"Listening...", end='\r')
         audio = r.listen(source)
 
@@ -78,118 +78,91 @@ def takeCommand(parseErrorPlayback = True):
             statement = r.recognize_google(audio, language='en-in')
         except sr.UnknownValueError:
             if parseErrorPlayback: speak("I'm sorry, I didn't catch that. Could you please repeat?")
-            return "None"
+            return "none"
         except sr.RequestError:
             speak("Sorry, I can't connect to the speech recognition service.")
-            return "None"
+            return "none"
         print(f"{Back.BLACK}{Style.BRIGHT}You: {Style.RESET_ALL}{statement}       ")
         return statement.lower()
-
-def timer():
-    speak("Okay! For how long should the timer be active for?")
-    while 1:
-        try:
-            raw_time = takeCommand()
-            if raw_time == 'None': continue
-            raw_time = raw_time.replace('in ', '').replace('and', '')
-            if 'Parsing time':
-                if 'minute' in raw_time:
-                    if 'minutes' in raw_time: minutes = raw_time.split('minutes')[0].split()[-1]
-                    else: minutes = raw_time.split('minute')[0].split()[-1]
-                    if 'a' in minutes:
-                        minutes = 1
-                    else:
-                        minutes = int(float(minutes))
-                else:
-                    minutes = 0
-                if 'second' in raw_time:
-                    if 'seconds' in raw_time: seconds = raw_time.split('seconds')[0].split()[-1]
-                    else: seconds = raw_time.split('second')[0].split()[-1]
-                    if 'a' in seconds:
-                        seconds = 1
-                    else:
-                        seconds = int(float(seconds))
-                else:
-                    seconds = 0
-            while seconds >= 60:
-                minutes += 1
-                seconds -= 60
-            
-            if minutes == 0 and seconds == 0:
-                speak("I didn't get that. Could you say that again?")
-                continue
-            time_in_words = ""
-            if minutes > 0:
-                time_in_words = f"{minutes} minutes"
-            if minutes > 0 and seconds > 0:
-                time_in_words += " and "
-            if seconds > 0:
-                time_in_words += f"{seconds} seconds"
-            speak(time_in_words)
-            speak("Is that correct? Say yes or no")
-            while 1: # Take command
-                c = takeCommand(parseErrorPlayback=False)
-                if not c == 'None':
-                    break
-                speak("I didnt get that. Is that correct?")
-            if 'y' not in c:
-                speak("Okay, could you say how long again?")
-                continue
-            speak(f"Okay then, starting timer for {time_in_words}")
-            while 1:
-                if minutes <= 0 and seconds <= 0:
-                    speak("Times up.")
-                    return
-
-                if minutes > 0 or seconds > 5:
-                    time.sleep(4)
-                    seconds -= 5
-                else:
-                    time.sleep(seconds)
-                    seconds -= seconds
-                time_in_words = ""
-                if minutes > 0:
-                    time_in_words = f"{minutes} minutes"
-                if minutes > 0 and seconds > 0:
-                    time_in_words += " and "
-                if seconds > 0:
-                    time_in_words += f"{seconds} seconds"
-                speak(f"{time_in_words} left", wait=True)
-                
-                if seconds < 0 and minutes > 0:
-                    seconds += 60
-                    minutes -= 1
-        
-        except Exception:
-            speak("Could you say how long again?")
+    
 def extract_number(text):
     """Extracts the first number found in a string."""
     match = re.search(r"\d+", text)
     return int(match.group()) if match else None
-#Alram Mechanism
-def set_alarm():
-    speak("At what time would you like to set the alarm? Please tell the time in HH:MM format.")
-    alarm_time = takeCommand()
-    if alarm_time != "none":
+
+def timer():
+    speak("How long should the timer run?")
+    while True:
         try:
-            alarm_hour, alarm_minute = map(int, alarm_time.split(":"))
-            speak(f"Setting the alarm for {alarm_hour}:{alarm_minute}.")
-            print(f"Alarm set for {alarm_hour}:{alarm_minute}")
+            raw_time = takeCommand()
+            if raw_time == 'none': continue
+            raw_time = raw_time.replace('in ', '').replace('and', '')
+            
+            minutes = int(re.findall(r'\d+', raw_time.split('minute')[0])[-1]) if 'minute' in raw_time else 0
+            seconds = int(re.findall(r'\d+', raw_time.split('second')[0])[-1]) if 'second' in raw_time else 0
 
-            while True:
-                current_time = datetime.datetime.now()
-                current_hour = current_time.hour
-                current_minute = current_time.minute
+            if minutes + seconds == 0:
+                speak("Please specify a valid time")
+                continue
 
-                if current_hour == alarm_hour and current_minute == alarm_minute:
-                    speak("Time to wake up! The alarm is ringing!")
-                    print("Alarm is ringing!")
+            total_seconds = minutes * 60 + seconds
+            speak(f"Starting timer for {minutes} minutes {seconds} seconds")
+            time.sleep(total_seconds)
+            speak("Timer completed!")
+            break
+        except Exception:
+            speak("Let's try again")
+def trivia_game():
+    speak("Welcome to the trivia game! I'll ask 10 random questions. Say 'quit' to stop.")
+    
+    try:
+        if not trivia_questions:
+            raise ValueError("No questions loaded")
+            
+        selected = random.sample(trivia_questions, min(10, len(trivia_questions)))
+        score = 0
+        
+        for idx, item in enumerate(selected, 1):
+            speak(f"Question {idx}: {item['question']}")
+            
+            # Get and validate answer
+            attempts = 0
+            while attempts < 2:
+                answer = takeCommand(parseErrorPlayback=False).strip().lower()
+                
+                if "quit" in answer or "exit" in answer:
+                    speak("Ending trivia game early.")
+                    return
+                
+                if not answer or answer == "none":
+                    speak("I didn't catch that, please try again.")
+                    attempts += 1
+                    continue
+                
+                # Flexible answer comparison
+                correct = item['answer'].strip().lower()
+                if answer == correct:
+                    score += 1
+                    speak("Correct!")
                     break
-                time.sleep(30)  # Check every 30 seconds if it's time for the alarm
-        except ValueError:
-            speak("Invalid time format. Please try again using HH:MM format.")
-    else:
-        speak("I couldn't get the alarm time. Please try again.")
+                else:
+                    speak(f"Sorry, the correct answer is {item['answer']}.")
+                    break
+            else:
+                speak("Moving to next question.")
+                
+        speak(f"Final score: {score} out of {len(selected)}!")
+        
+    except Exception as e:
+        speak("Couldn't start trivia game. Please check the questions file.")
+        print(f"Trivia error: {str(e)}")
+
+
+def set_brightness(level):
+    c = wmi.WMI(namespace='wmi')
+    methods = c.WmiMonitorBrightnessMethods()[0]
+    methods.WmiSetBrightness(level, 0)
+    speak(f"Brightness set to {level}%")
 
 def ollama_chat(query):
     try:
@@ -211,6 +184,11 @@ def ollama_chat(query):
     except Exception as e:
         print(f"Error: {e}")
         return "Sorry, I encountered an error."
+
+
+
+
+
 
 def open_application(statement):
     statement = statement.replace("open ", "").strip()  # Extract app name
@@ -314,38 +292,6 @@ def open_application(statement):
         print(e)
         return False
 
-    
-
-
-
-
-
-
-#Alram Mechanism
-def set_alarm():
-    speak("At what time would you like to set the alarm? Please tell the time in HH:MM format.")
-    alarm_time = takeCommand()
-    if alarm_time != "none":
-        try:
-            alarm_hour, alarm_minute = map(int, alarm_time.split(":"))
-            speak(f"Setting the alarm for {alarm_hour}:{alarm_minute}.")
-            print(f"Alarm set for {alarm_hour}:{alarm_minute}")
-
-            while True:
-                current_time = datetime.datetime.now()
-                current_hour = current_time.hour
-                current_minute = current_time.minute
-
-                if current_hour == alarm_hour and current_minute == alarm_minute:
-                    speak("Time to wake up! The alarm is ringing!")
-                    print("Alarm is ringing!")
-                    break
-                time.sleep(30)  # Check every 30 seconds if it's time for the alarm
-        except ValueError:
-            speak("Invalid time format. Please try again using HH:MM format.")
-    else:
-        speak("I couldn't get the alarm time. Please try again.")
-
 def convert_currency(statement):
     if "convert" in statement:
         try:
@@ -384,39 +330,37 @@ def convert_currency(statement):
             speak("Sorry, I couldn't understand the conversion details.")
             print(e)
 
-
-
-# Spotify credentials
-SPOTIPY_CLIENT_ID = "a013d93c5f754101a75ac93af8d84065"
-SPOTIPY_CLIENT_SECRET = "e0738d7da50c4043999cf9a8a91d64bf"
-
-# Initialize Spotify API client
-sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
-    client_id=SPOTIPY_CLIENT_ID,
-    client_secret=SPOTIPY_CLIENT_SECRET
-))
-
-# Spotify play music function
-def play_music_on_spotify(query):
+def play_music(query):
     try:
-        results = sp.search(q=query, type='track', limit=1)
-        tracks = results['tracks']['items']
-
-        if tracks:
-            track = tracks[0]
-            track_name = track['name']
-            artist_name = track['artists'][0]['name']
-            spotify_url = track['external_urls']['spotify']
-
-            speak(f"Playing {track_name} by {artist_name}.")
-            webbrowser.open(spotify_url)
+        results = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+            client_id="a013d93c5f754101a75ac93af8d84065",
+            client_secret="e0738d7da50c4043999cf9a8a91d64bf"
+        )).search(q=query, type='track', limit=1)
+        
+        if results['tracks']['items']:
+            track = results['tracks']['items'][0]
+            webbrowser.open(track['external_urls']['spotify'])
+            speak(f"Playing {track['name']} by {track['artists'][0]['name']}")
         else:
-            speak("Sorry, I couldn't find any matching songs on Spotify.")
+            speak("Song not found")
     except Exception as e:
-        speak("There was an issue accessing Spotify.")
-        print(e)
+        speak("Music playback failed")
 
-# Main program starts here
+def handle_translation():
+    speak("What text should I translate?")
+    text = takeCommand()
+    while text == "none":
+        speak("Please repeat the text")
+        text = takeCommand()
+    
+    speak("Target language?")
+    lang = takeCommand()
+    try:
+        translated = GoogleTranslator(source='auto', target=lang).translate(text)
+        speak(f"Translation: {translated}")
+    except Exception as e:
+        speak("Translation failed")
+
 wishMe()
 if __name__ == '__main__':
     failed = False
@@ -430,71 +374,36 @@ if __name__ == '__main__':
         if statement == "None":
             failed = True
             continue
-        
-        if 'help' in statement:
-            webbrowser.open_new_tab('file:///C:/Users/Student/Desktop/Arnav%208B/help.html')
-            speak("Sure! Here is the list of commands.")
-
-        if 'hello' in statement:
-            speak("Hello! How can i assist you?")
-
-        elif 'convert' in statement:
-            convert_currency(statement)
-        
-        elif 'developers' or 'who made you' in statement:
-            speak("I was developed by Haiclop Corps")
-            print("I was developed by HaiCLOP Corps")
-
-        elif statement.startswith("play "):
-            song_query = statement.replace("play ", "").strip()
-            play_music_on_spotify(song_query)
-            continue
-
-        elif 'open app' in statement:
+            
+        elif "open " in statement:
             open_application(statement)
-
-        # Website Navigation
-        opened_website = False
-        for item in websites:
-            if f"open {item['name'].lower()}" in statement:
-                speak(f"Opening {item['name']}", wait=False)
-                webbrowser.open_new_tab(item['url'])
-                opened_website = True
-        if opened_website:
-            continue
-
-        # Timer
-        elif 'timer' in statement:
+        
+        elif "play " in statement:
+            play_music(statement.replace("play ", ""))
+        
+        elif "timer" in statement:
             timer()
 
-        # Jokes
-        elif 'joke' in statement:
-            speak(random.choice(jokes))
+        elif "trivia" in statement or "quiz" in statement:
+            trivia_game()
+        
+        elif "convert" in statement:
+            convert_currency(statement)
+        
+        elif "translate" in statement:
+            handle_translation()
+        
+        elif "brightness" in statement:
+            level = extract_number(statement)
+            if level is not None:
+                if 0 <= level <= 100:
+                    sbc.set_brightness(level)
+                    speak(f"Brightness set to {level} percent.")
+                else:
+                    speak("Brightness level must be between 0 and 100.")
+            else:
+                speak("Please specify a brightness level.")
 
-        # Riddles
-        elif 'riddle' in statement:
-            riddle = random.choice(riddles)
-            speak(riddle["question"])
-            time.sleep(2)
-            speak(f"The answer is: {riddle['answer']}.")
-
-        # Quotes
-        elif 'motivate' in statement or 'quote' in statement:
-            speak(random.choice(quotes))
-
-        if "shutdown" in statement:
-            speak("Shutting down the system.")
-            os.system("shutdown /s /t 1")
-
-        elif "restart" in statement:
-            speak("Restarting the system.")
-            os.system("shutdown /r /t 1")
-
-        elif "log off" in statement:
-            speak("Logging off.")
-            os.system("shutdown /l")
-
-        # Volume Control
         elif "volume" in statement:
             level = extract_number(statement)
             if level is not None:
@@ -509,32 +418,70 @@ if __name__ == '__main__':
             else:
                 speak("Please specify a volume level.")
 
-        # Mute/Unmute Toggle
-        elif "mute microphone" in statement or "unmute microphone" in statement or "toggle microphone" in statement:
-            state = "1" if "mute" in statement else "0"
-            os.system(f"nircmd.exe mutesysvolume {state} microphone")
-            speak("Microphone muted." if state == "1" else "Microphone unmuted.")
-
-        # Brightness Control
-        elif "brightness" in statement:
-            level = extract_number(statement)
-            if level is not None:
-                if 0 <= level <= 100:
-                    sbc.set_brightness(level)
-                    speak(f"Brightness set to {level} percent.")
-                else:
-                    speak("Brightness level must be between 0 and 100.")
-            else:
-                speak("Please specify a brightness level.")
-
-        # Wi-Fi Control
         elif "wifi on" in statement:
             os.system("powershell -Command \"Enable-NetAdapter -Name 'Wi-Fi' -Confirm:$false\"")
             speak("Wi-Fi enabled.")
 
         elif "wifi off" in statement:
+            speak("Wi-Fi disabled. Note Velion will shut down too, please restart velion after connecting to internet.")
             os.system("powershell -Command \"Disable-NetAdapter -Name 'Wi-Fi' -Confirm:$false\"")
-            speak("Wi-Fi disabled.")
+        
+        elif "joke" in statement:
+            speak(random.choice(jokes))
+        
+        elif "quote" in statement or "motivate" in statement:
+            speak(random.choice(quotes))
+        
+        elif "exit" in statement or "quit" in statement:
+            speak("Goodbye!")
+            break
+        
+        elif "who made you" in statement or "developer" in statement:
+            speak("I was developed by Haiclop Labs")
+        
+        elif 'time' in statement and 'timer' not in statement:
+            strTime = datetime.datetime.now().strftime("%H:%M:%S")
+            print(f"The time is {strTime}")
+            speak(f"The time is {datetime.datetime.now().hour} {datetime.datetime.now().minute}", echo=False)
+
+        elif "design" in statement or "structure" in statement:
+            speak("I am a simple text-based Personal assistant. My structure is based on a combination of multiple APIs and code")
+
+        elif 'search' in statement and 'youtube' not in statement and 'wiki' not in statement and 'github' not in statement:
+            statement = statement.replace("search", "").strip()
+            search_url = f"https://www.google.com/search?q={statement.replace(' ', '+')}"
+            webbrowser.open_new_tab(search_url)
+            speak(f"Searching for {statement} on Google...")
+            time.sleep(5)
+
+        
+
+        elif 'wikipedia' in statement:
+            statement = statement.replace("wikipedia", "").strip()
+            search_url = f"https://en.wikipedia.org/w/index.php?search={statement.replace(' ', '+')}"
+            webbrowser.open_new_tab(search_url)
+            speak(f"Searching for {statement} on Wikipedia...")
+            time.sleep(5)
+
+        elif 'search youtube' in statement:
+            statement = statement.replace("search youtube", "").strip()
+            search_url = f"https://www.youtube.com/results?search_query={statement.replace(' ', '+')}"
+            webbrowser.open_new_tab(search_url)
+            speak(f"Searching on YouTube for {statement}...")
+            time.sleep(5)
+
+        elif 'search github' in statement:
+            statement = statement.replace("search github", "").strip()
+            search_url = f"https://github.com/search?q={statement.replace(' ', '%20')}&type=repositories"
+            webbrowser.open_new_tab(search_url)
+            speak(f"Searching for {statement} on GitHub...")
+            time.sleep(5)
+
+        elif "languages" in statement:
+            speak("I am currently limited to speak and understand English.")
+
+        elif 'who are you' in statement or 'what can you do' in statement or 'hu r u' in statement:
+            speak("I am Velion, version 1.0, your personal assistant. I can open YouTube, Google Chrome, Gmail, Stack Overflow, tell you the time, search Wikipedia, get weather updates, and fetch news.")
 
 
         elif 'ask' in statement or 'query' in statement or 'chatgpt' in statement or '' in statement: # VelionAI
@@ -568,6 +515,7 @@ if __name__ == '__main__':
                 # Output the response from the server
                 speak(response.json()['result'], speaker="VelionAI")
 
-
         
-        
+        else:
+                speak("Command not recognised ask to AI, use chatbot for using AI")
+                
